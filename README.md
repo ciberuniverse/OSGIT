@@ -6,6 +6,8 @@ La idea es obtener datos sin interacción directa —como corresponde al espíri
 
 Este script combina **GitHub dorks**, iteración de resultados y un sistema de **probabilidad** para determinar qué repositorios podrían estar relacionados con el backend de un sitio web.
 
+![Imagen](https://repository-images.githubusercontent.com/1146420863/3d12de9b-93cf-4ed2-a365-64f63ea30425)
+
 ---
 
 ## ¿Como funciona el script?
