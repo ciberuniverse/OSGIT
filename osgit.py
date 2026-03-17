@@ -49,7 +49,8 @@ resultados_coincidencias = iterar_github(
     rate_limit_gh_api = configuracion_valida["limite"] or 0,
     terminar_encontrado = configuracion_valida["end"],
     escaneo_profundo = configuracion_valida["deep"],
-    limite_paginas = configuracion_valida["limite_paginas"]
+    limite_paginas = configuracion_valida["limite_paginas"],
+    minimo_resultado = configuracion_valida["minimo_resultado"]
 )
 
 def return_color(indice_coincidencia: int) -> str:

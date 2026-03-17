@@ -1,5 +1,5 @@
 from sys import argv
-import requests, bs4, time, json
+import requests, bs4, time, regex
 from urllib.parse import urlparse
 from itertools import combinations_with_replacement
 
@@ -80,9 +80,10 @@ def banner():
             {RED}{BOLD}OSGIT => THE CAT THAT (ALMOST){RESET}
                      {RED}{BOLD}SEES EVERYTHING{RESET}
             {MAGENTA}------------------------------{RESET}
-                {RESET}{BLUE}{BOLD}DEVELOPER = Ciberuniverse
-                {RESET}{BOLD}         </>
-        """)
+
+        {RESET}{BLUE}{BOLD}[ Powered with Code by Ciberuniverse ]{RESET}
+
+""")
 
 def ayuda():
     banner()
@@ -98,6 +99,7 @@ def ayuda():
     {GREEN}-h{RESET}          Busca únicamente por huellas en comentarios
     {GREEN}-I <N>{RESET}      Número de coincidencias por búsqueda (AND)
     {GREEN}-l <N>{RESET}      Límite de consultas a la API
+    {GREEN}-m <N>{RESET}      Coincidencias minimas para que el programa genere resultados.
     {GREEN}-g <tipo>{RESET}   Tipo de generación de combinaciones:
                 "normal" | "itertools"
     {GREEN}-lP <N>{RESET}     Limite de busquedas por paginas en busquedas profundas.
@@ -129,7 +131,7 @@ def verificar_argumentos():
         return argv[argv.index(parametro) + 1]
 
     # Parametros utilizados en la TOOL
-    parametros = ["-A", "-f", "-h", "-I", "-l", "-g", "-lP", "--filter", "--no-end", "--deep"]
+    parametros = ["-A", "-f", "-h", "-I", "-l", "-m", "-g", "-lP", "--filter", "--no-end", "--deep"]
     """
         -A: Busca tanto huellas de comentarios como filtrado por archivos.
         -f: Busca unicamente por nombres de archivos.
@@ -137,6 +139,7 @@ def verificar_argumentos():
         -I: Cantidad de coincidencias por busqueda (AND's).
         -l: Cantidad de consultas que usara la api.
         -g: Tipo de generacion de combinaciones "normal" | "itertools".
+        -m: Coincidencias minimas para que el programa genere resultados.
         -lP: Limite de busquedas por paginas en busquedas profundas.
         --filter: Archivos a filtrar.
         --no-end: No finaliza el programa cuando se encuentra la coincidencia maxima.
@@ -152,7 +155,8 @@ def verificar_argumentos():
         "gen_type": "normal",
         "end": True,
         "deep": False,
-        "limite_paginas": 10
+        "limite_paginas": 10,
+        "minimo_resultado": 5
     }
     
     if "--api-key" not in argv:
@@ -187,7 +191,15 @@ def verificar_argumentos():
 
         except Exception as err:
             return response_json(500, f"Menu {err}")
-
+        
+    # Si existe el parametro -m se le asigna el valor correspondiente en la configuracion
+    if "-m" in argv:
+        try:
+            configuracion["minimo_resultado"] = int(obtener_valor("-m"))
+        
+        except Exception as err:
+            return response_json(500, f"Menu {err}")
+        
     if "--filter" in argv:
         configuracion["filtro"] = obtener_valor("--filter").split(",")
 
@@ -227,13 +239,25 @@ def verificar_argumentos():
     # Retorna la configuracion estipulada
     return response_json(200, configuracion)
 
+def __limpiar_caracteres_humanos__(string_comment: str) -> str:
+
+    for x in ["<!--", "-->", "/*", "*/"]:
+        string_comment = string_comment.replace(x, "")
+    
+    return  "'" + string_comment.strip() + "'"
+
 def busqueda_humana(html_source: str) -> set:
 
     lines_html = html_source.split("\n")
     results_ = set()
 
-    search_line_term = ["//", "<!--"]
+    # Buscamos comentarios de html en el codigo unicamente con regex (mas eficiente)   
+    for a in regex.findall(r"<!--\s*(.*?)\s*-->", html_source):
+        #results_.add("'" + a + "'")
+        results_.add(a)
 
+    search_line_term = ["//", "/*"]
+    
     for line in lines_html:
 
         if "://" in line:
@@ -245,7 +269,10 @@ def busqueda_humana(html_source: str) -> set:
         if not line:
             continue
         
+        #results_.add(__limpiar_caracteres_humanos__(line.strip()))
         results_.add(line.strip())
+        #results_.add("'" + line.strip() + "'")
+
     
     return results_
 
@@ -293,7 +320,10 @@ def buscar_por_nombres(html_source: str) -> set:
     }
 
     results_ = set()
-    results_.add(web_parse.find("title").get_text(strip=True))
+    try:
+        results_.add(web_parse.find("title").get_text(strip=True))
+    except Exception as err:
+        response_json(500, err, True)
 
     # Por cada elemento a buscar se obtiene la informacion y se guarda en la variable
     # result_ para retornar
@@ -364,10 +394,13 @@ def __get2_github__(params: dict) -> dict:
         # Se realiza la solicitud get con los parametros personalizados a github
         result = session_find.get(api_endpoint, params=params)
         return result.json()
+
+    except KeyboardInterrupt:
+        return response_json(402, "Terminando ejecucion", True)
     
     # Aun no se como se comporta esto en caso de error (referente al comportamiento en si del programa)
     except Exception as err:
-        response_json(500, err, True)
+        return response_json(500, err, True)
 
 def __check_aviable_gh__(params) -> dict:
     """
@@ -380,6 +413,8 @@ def __check_aviable_gh__(params) -> dict:
 
     # Se envia la solicitud a nuestro servidor
     result = __get2_github__(params)
+    if "status" in result and result["status"] == int(402):
+        raise Exception("xd")
 
     # Se verifica con un limite de 5 intentos fallidos en conexion con la api para 
     # salir de el programa indicando que algo esta mal
@@ -395,6 +430,11 @@ def __check_aviable_gh__(params) -> dict:
         # Si la respuesta no contiene lo que deberia de responder en una respuesta exitosa
         # se ejecuta un time out para luego ejecutar la misma solicitud
         if "total_count" not in result:
+
+            if result["status"] == "422":
+                response_json(500, "La query contiene caracteres no compatibles =>> [ NEXT ]", True)
+                
+                return result
 
             response_json(400, "TIME SLEEP DE 60 SEGUNDOS EN CURSO", True)
 
@@ -469,7 +509,9 @@ def iterar_github(
         rate_limit_gh_api: int = 0,
         terminar_encontrado: bool = True,
         escaneo_profundo: bool = False,
-        limite_paginas: int = 0
+        limite_paginas: int = 0,
+
+        minimo_resultado: int = 5
     ) -> dict:
 
     resultados_con_coincidencias: dict[int] = dict()
@@ -517,7 +559,7 @@ def iterar_github(
                     continue
                 
                 resultados_con_coincidencias[git_] += 1
-                if resultados_con_coincidencias[git_] >= 3:
+                if resultados_con_coincidencias[git_] >= minimo_resultado:
                     
                     if terminar_encontrado:
                         return resultados_con_coincidencias
